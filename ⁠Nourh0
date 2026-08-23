@@ -1,0 +1,24 @@
+import SwiftUI
+import WebKit
+
+struct ContentView: View {
+    // الرابط المباشر لمشروعك على GitHub Pages
+    let myAppURL = URL(string: "https://Nourh0.github.io/my-web-app/")!
+    
+    var body: some View {
+        WebView(url: myAppURL)
+            .ignoresSafeArea()
+    }
+}
+
+struct WebView: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        config.allowsInlineMediaPlayback = true // لتشغيل الفيديو داخل التطبيق
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+}

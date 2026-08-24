@@ -16,48 +16,17 @@ app.use(cors({
     allowedHeaders: ['Range', 'Content-Type', 'Accept-Encoding', 'Accept-Ranges']
 }));
 
-// تشغيل الملفات الثابتة من مجلد public أو المجلد الرئيسي
-app.use(express.static(path.join(__dirname, 'public')));
+// 2. تشغيل الملفات من المجلد الرئيسي مباشرة (لأننا حذفنا public)
 app.use(express.static(__dirname));
 
-// --- [الرئيسية] كود البحث الذكي والمطور عن ملف الواجهة (تم التحديث هنا) ---
+// 3. [تحديث] المسار المباشر لفتح واجهة الويب (index.html من Root)
 app.get('/', (req, res) => {
-    // 1. قائمة بجميع المسارات الممكنة (حسب ترتيبك للمجلدات)
-    const possiblePaths = [
-        path.join(__dirname, 'public', 'index.html'),
-        path.join(process.cwd(), 'public', 'index.html'),
-        path.join(__dirname, 'index.html'),
-        './public/index.html'
-    ];
-
-    // 2. البحث عن الملف في القائمة
-    for (const p of possiblePaths) {
-        if (fs.existsSync(p)) {
-            console.log(`✅ تم العثور على الملف في المسار: ${p}`);
-            return res.sendFile(p);
-        }
+    const indexPath = path.join(process.cwd(), 'index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("خطأ: ملف index.html غير موجود في المجلد الرئيسي.");
     }
-
-    // 3. إذا لم يجده (جزء التشخيص الذكي المضاف)
-    console.log("❌ لم يتم العثور على الملف. جاري فحص المجلدات...");
-    const rootFiles = fs.readdirSync(__dirname);
-    let publicContent = "المجلد غير موجود";
-    
-    if (fs.existsSync(path.join(__dirname, 'public'))) {
-        publicContent = fs.readdirSync(path.join(__dirname, 'public')).join(', ');
-    }
-
-    res.status(404).send(`
-        <div dir="rtl" style="font-family: sans-serif; padding: 20px; line-height: 1.6; border: 2px solid red; background: #fff5f5;">
-            <h2 style="color: red;">⚠️ خطأ في العثور على ملف الواجهة</h2>
-            <p>السيرفر يعمل، لكنه لا يرى ملف <b>index.html</b> بالداخل.</p>
-            <hr>
-            <p><b>محتويات المجلد الرئيسي:</b> [${rootFiles.join(', ')}]</p>
-            <p><b>محتويات مجلد public:</b> [${publicContent}]</p>
-            <hr>
-            <p>💡 <b>نصيحة للإصلاح:</b> تأكد أن اسم المجلد في GitHub هو <b>public</b> بحروف صغيرة تماماً وليس <b>Public</b>.</p>
-        </div>
-    `);
 });
 
 // --- 1. ملف التعريف (Manifest) الكامل لستريمو V8.1 ---
@@ -181,10 +150,10 @@ const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
     =================================================
-    🚀 iPad Cinema Cloud Pro - النسخة النهائية الموحدة
+    🚀 iPad Cinema Cloud Pro - النسخة المباشرة (No Public)
     📡 المنفذ: ${PORT}
+    🏠 الواجهة الرئيسية: index.html (Root)
     🛠️ نظام البروكسي: مُفعل ✅
-    💾 السحابة الحقيقية: مُفعلة ✅
     =================================================
     `);
 });

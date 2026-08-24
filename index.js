@@ -6,6 +6,8 @@ const path = require('path');
 const trackers = require('./trackers'); // تأكد من وجود الملف بجانبه
 
 const app = express();
+
+// تفعيل CORS للسماح لستريمو بالاتصال بالسيرفر
 app.use(cors());
 
 // تشغيل واجهة الموقع من مجلد public (للمتصفح)
@@ -16,16 +18,14 @@ app.get('/manifest.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.json({
         id: "org.ipad.cinema.pro.v7",
-        version: "7.0.0",
+        version: "7.1.0",
         name: "iPad Cinema Pro 🎬",
         description: "مكتبة أفلام وبث تورنت حقيقي فائق السرعة للآيباد",
-        // شعار الإضافة لكي لا تظهر كمكعب رمادي
         logo: "https://cdn-icons-png.flaticon.com/512/2503/2503508.png", 
         background: "https://wallpaperaccess.com/full/1512225.jpg",
         resources: ["stream", "catalog"],
         types: ["movie", "series"],
         idPrefixes: ["tt"],
-        // لظهور البوسترات في واجهة ستريمو الرئيسية (Board)
         catalogs: [
             {
                 type: "movie",
@@ -80,14 +80,15 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     res.json({ streams: [] });
 });
 
-// --- 5. محرك الفيديو (Video Engine V7 Optimized) ---
+// --- 5. محرك الفيديو (Video Engine V7.1 Optimized) ---
 app.get('/video', (req, res) => {
     const magnetUri = req.query.magnet;
     if (!magnetUri) return res.status(400).send("No magnet provided");
 
+    // إعدادات المحرك لضمان استقرار السيرفر تحت ضغط الطلبات
     const engine = torrentStream(magnetUri, {
         trackers: trackers,
-        connections: 25, // عدد متوازن لاستقرار الرام في Render
+        connections: 20, // تقليل عدد الاتصالات لمنع الازدحام وانهيار الذاكرة
         tmp: '/tmp'
     });
 
@@ -98,10 +99,13 @@ app.get('/video', (req, res) => {
             return res.status(404).send("Not Found");
         }
         
-        file.select(); // تحميل البداية فوراً
+        file.select(); // تحميل أجزاء الفيديو الأولى فوراً
         const range = req.headers.range;
         if (!range) {
-            res.writeHead(200, { 'Content-Length': file.length, 'Content-Type': 'video/mp4' });
+            res.writeHead(200, { 
+                'Content-Length': file.length, 
+                'Content-Type': 'video/mp4' 
+            });
             file.createReadStream().pipe(res);
         } else {
             const parts = range.replace(/bytes=/, "").split("-");
@@ -117,15 +121,34 @@ app.get('/video', (req, res) => {
         }
     });
 
+    // إغلاق المحرك فوراً عند إيقاف الفيلم لتفريغ المنفذ والذاكرة
     res.on('close', () => {
-        console.log("Destroying engine...");
+        console.log("إغلاق الاتصال.. تنظيف موارد المحرك");
         engine.destroy();
     });
 });
 
 app.get('/', (req, res) => {
-    res.send('<h1>iPad Cinema V7 Pro Hybrid is Active! ✅</h1><p>Add /manifest.json to Stremio</p>');
+    res.send(`
+        <div style="text-align:center; padding:50px; font-family:sans-serif;">
+            <h1 style="color:#2c3e50;">iPad Cinema V7 Pro Hybrid ✅</h1>
+            <p>السيرفر يعمل بنجاح على المنفذ المخصص.</p>
+            <code style="background:#eee; padding:10px;">/manifest.json</code>
+        </div>
+    `);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`V7 Pro Running on ${PORT}`));
+// --- إعداد المنفذ وتشغيل الخادم لـ Render ---
+// يأخذ المنفذ 10000 من الإعدادات تلقائياً
+const PORT = process.env.PORT || 10000;
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+    =================================================
+    🚀 iPad Cinema V7 Pro - تم التشغيل!
+    📡 المنفذ النشط: ${PORT}
+    🛠️ نظام إدارة الازدحام: مفعل (Max Connections: 20)
+    ✅ جاهز لاستقبال الطلبات من ستريمو والآيباد
+    =================================================
+    `);
+});

@@ -20,21 +20,44 @@ app.use(cors({
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
 
-// --- [الرئيسية] ذكاء البحث عن ملف index.html لمنع خطأ الـ 404 ---
+// --- [الرئيسية] كود البحث الذكي والمطور عن ملف الواجهة (تم التحديث هنا) ---
 app.get('/', (req, res) => {
-    const locations = [
+    // 1. قائمة بجميع المسارات الممكنة (حسب ترتيبك للمجلدات)
+    const possiblePaths = [
         path.join(__dirname, 'public', 'index.html'),
+        path.join(process.cwd(), 'public', 'index.html'),
         path.join(__dirname, 'index.html'),
-        '/usr/src/app/public/index.html',
-        '/usr/src/app/index.html'
+        './public/index.html'
     ];
-    
-    for (let loc of locations) {
-        if (fs.existsSync(loc)) {
-            return res.sendFile(loc);
+
+    // 2. البحث عن الملف في القائمة
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            console.log(`✅ تم العثور على الملف في المسار: ${p}`);
+            return res.sendFile(p);
         }
     }
-    res.status(404).send("Error: index.html not found. تأكد من وجود المجلد public وبداخله الملف.");
+
+    // 3. إذا لم يجده (جزء التشخيص الذكي المضاف)
+    console.log("❌ لم يتم العثور على الملف. جاري فحص المجلدات...");
+    const rootFiles = fs.readdirSync(__dirname);
+    let publicContent = "المجلد غير موجود";
+    
+    if (fs.existsSync(path.join(__dirname, 'public'))) {
+        publicContent = fs.readdirSync(path.join(__dirname, 'public')).join(', ');
+    }
+
+    res.status(404).send(`
+        <div dir="rtl" style="font-family: sans-serif; padding: 20px; line-height: 1.6; border: 2px solid red; background: #fff5f5;">
+            <h2 style="color: red;">⚠️ خطأ في العثور على ملف الواجهة</h2>
+            <p>السيرفر يعمل، لكنه لا يرى ملف <b>index.html</b> بالداخل.</p>
+            <hr>
+            <p><b>محتويات المجلد الرئيسي:</b> [${rootFiles.join(', ')}]</p>
+            <p><b>محتويات مجلد public:</b> [${publicContent}]</p>
+            <hr>
+            <p>💡 <b>نصيحة للإصلاح:</b> تأكد أن اسم المجلد في GitHub هو <b>public</b> بحروف صغيرة تماماً وليس <b>Public</b>.</p>
+        </div>
+    `);
 });
 
 // --- 1. ملف التعريف (Manifest) الكامل لستريمو V8.1 ---
@@ -74,7 +97,6 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     const host = req.get('host');
     const fullHost = `${protocol}://${host}`;
     
-    // البحث في السحابة أولاً
     const cached = cloudDB.getStreams(id);
     if (cached) return res.json({ streams: cached });
 
@@ -85,7 +107,6 @@ app.get('/stream/:type/:id.json', async (req, res) => {
             const streams = response.data.streams.slice(0, 5).map((s) => ({
                 name: "iPad Pro 🚀", 
                 title: `${s.title}\n👤 Seeds: ${s.seeders || 'OK'}`,
-                // تحويل الرابط ليمر عبر البروكسي الخاص بنا
                 url: `${fullHost}/video?magnet=${encodeURIComponent('magnet:?xt=urn:btih:'+s.infoHash)}`
             }));
 
@@ -162,7 +183,7 @@ app.listen(PORT, '0.0.0.0', () => {
     =================================================
     🚀 iPad Cinema Cloud Pro - النسخة النهائية الموحدة
     📡 المنفذ: ${PORT}
-    🛠️ نظام البروكسي (Idea 2): مُفعل ✅
+    🛠️ نظام البروكسي: مُفعل ✅
     💾 السحابة الحقيقية: مُفعلة ✅
     =================================================
     `);

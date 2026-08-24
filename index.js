@@ -3,24 +3,40 @@ const cors = require('cors');
 const torrentStream = require('torrent-stream');
 const axios = require('axios');
 const path = require('path');
-const trackers = require('./trackers'); // تأكد من وجود ملف trackers.js بجانبه
+const trackers = require('./trackers'); 
 
 const app = express();
 
-// تفعيل CORS لضمان قبول الإضافة في تطبيق ستريمو والآيباد
+// تفعيل CORS لضمان قبول الإضافة في تطبيق ستريمو والآيباد والمتصفحات
 app.use(cors());
 
-// تشغيل واجهة الموقع من مجلد public (للمتصفح والآيباد)
+// تشغيل واجهة الموقع من مجلد public
+// هذا السطر يجعل السيرفر يقرأ ملف index.html الموجود داخل مجلد public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. ملف التعريف النهائي (Manifest V8.1) ---
+// --- [جديد] مسار جلب الأفلام لواجهة الويب (المكتبة) ---
+app.get('/api/movies/movie', async (req, res) => {
+    try {
+        // جلب قائمة الأفلام الشهيرة من Cinemeta لعرضها في موقعك
+        const response = await axios.get(`https://v3-cinemeta.strem.io/catalog/movie/top.json`);
+        const movies = response.data.metas.map(m => ({
+            name: m.name,
+            poster: m.poster,
+            imdb_id: m.imdb_id
+        }));
+        res.json(movies);
+    } catch (e) {
+        res.json([]);
+    }
+});
+
+// --- 1. ملف التعريف النهائي (Manifest) لستريمو ---
 app.get('/manifest.json', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
     res.json({
         id: "org.ipad.cinema.pro.v8",
         version: "8.1.0",
         name: "iPad Cinema Pro 🎬",
-        description: "مكتبة أفلام وبث تورنت حقيقي فائق السرعة - نسخة مصلحة كلياً",
+        description: "مكتبة أفلام وبث تورنت حقيقي فائق السرعة",
         logo: "https://cdn-icons-png.flaticon.com/512/2503/2503508.png", 
         background: "https://wallpaperaccess.com/full/1512225.jpg",
         resources: ["stream", "catalog"],
@@ -33,7 +49,7 @@ app.get('/manifest.json', (req, res) => {
     });
 });
 
-// --- 2. معالج الكتالوج (Catalog) ---
+// --- 2. معالج الكتالوج (Catalog) لستريمو ---
 app.get('/catalog/:type/:id.json', async (req, res) => {
     const { type } = req.params;
     try {
@@ -44,55 +60,40 @@ app.get('/catalog/:type/:id.json', async (req, res) => {
     }
 });
 
-// --- 3. معالج البحث الذكي عن الروابط (Stream Handler V8) ---
-// تم دمج تحسينات التقرير لحل مشكلة المصفوفة الفارغة []
+// --- 3. معالج الروابط (Stream Handler) لستريمو والويب ---
 app.get('/stream/:type/:id.json', async (req, res) => {
     const { type, id } = req.params;
     const host = `${req.protocol}://${req.get('host')}`;
     
-    console.log(`🔎 جاري البحث عن روابط للمعرف: ${id}`);
-
     try {
-        // طلب الروابط من Torrentio مع مهلة زمنية 4 ثوانٍ
         const response = await axios.get(`https://torrentio.strem.fun/stream/${type}/${id}.json`, { timeout: 4000 });
         
-        if (response.data && response.data.streams && response.data.streams.length > 0) {
+        if (response.data && response.data.streams) {
             const streams = response.data.streams.slice(0, 5).map((s) => {
                 const magnet = `magnet:?xt=urn:btih:${s.infoHash}`;
                 return {
                     name: "iPad Cinema Pro 🚀", 
                     title: `${s.title}\n👤 Seeds: ${s.seeders || 'OK'}`,
-                    url: `${host}/video?magnet=${encodeURIComponent(magnet)}`,
-                    behaviorHints: {
-                        notWebReady: false,
-                        bingeGroup: `ipad-pro-${id}`
-                    }
+                    url: `${host}/video?magnet=${encodeURIComponent(magnet)}`
                 };
             });
             return res.json({ streams });
         }
     } catch (e) {
-        console.error("⚠️ خطأ في السكرابر أو انتهت المهلة");
+        console.error("Error fetching streams");
     }
 
-    // إذا لم يجد روابط، يرسل رسالة تنبيه بدلاً من مصفوفة فارغة ليعرف المستخدم أن السيرفر يعمل
-    res.json({ 
-        streams: [{
-            name: "⚠️ تنبيه",
-            title: "جاري البحث عن مصادر.. يرجى العودة للخلف والمحاولة مرة أخرى",
-            url: `${host}/video?magnet=0` 
-        }] 
-    });
+    res.json({ streams: [] });
 });
 
-// --- 4. محرك الفيديو المتطور (Video Engine V8) ---
+// --- 4. محرك الفيديو (Video Engine) - المسؤول عن تشغيل التورنت ---
 app.get('/video', (req, res) => {
     const magnetUri = req.query.magnet;
-    if (!magnetUri || magnetUri === '0') return res.status(400).send("No valid magnet");
+    if (!magnetUri) return res.status(400).send("No valid magnet");
 
     const engine = torrentStream(magnetUri, {
         trackers: trackers,
-        connections: 20, // عدد متوازن لمنع انهيار الخادم في Render
+        connections: 20,
         tmp: '/tmp'
     });
 
@@ -103,7 +104,6 @@ app.get('/video', (req, res) => {
             return res.status(404).send("Video file not found");
         }
         
-        file.select(); 
         const range = req.headers.range;
         if (!range) {
             res.writeHead(200, { 'Content-Length': file.length, 'Content-Type': 'video/mp4' });
@@ -122,32 +122,15 @@ app.get('/video', (req, res) => {
         }
     });
 
-    res.on('close', () => {
-        console.log("Cleanup: Destroying torrent engine");
-        engine.destroy();
-    });
+    res.on('close', () => engine.destroy());
 });
 
+// المسار الرئيسي يفتح واجهة الويب مباشرة
 app.get('/', (req, res) => {
-    res.send(`
-        <div style="text-align:center; padding:50px; font-family:sans-serif;">
-            <h1 style="color:#2c3e50;">iPad Cinema Pro V8.1 Hybrid ✅</h1>
-            <p>السيرفر يعمل بكامل طاقته على المنفذ المخصص.</p>
-            <code style="background:#eee; padding:10px;">/manifest.json</code>
-        </div>
-    `);
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// --- إعداد المنفذ لـ Render ---
 const PORT = process.env.PORT || 10000;
-
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`
-    =================================================
-    🚀 iPad Cinema V8.1 Pro - تم التشغيل بنجاح!
-    📡 المنفذ: ${PORT}
-    🛠️ تم دمج تحسينات V7 و V8
-    ✅ جاهز للبث الحقيقي
-    =================================================
-    `);
+    console.log(`🚀 السيرفر شغال على البورت: ${PORT}`);
 });

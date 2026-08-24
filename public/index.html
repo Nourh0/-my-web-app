@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPad Cinema Pro | المكتبة السحابية</title>
+    <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
+    <style>
+        /* تنسيق الواجهة الاحترافي */
+        body { background: #050505; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; }
+        h2 { text-align: center; color: #e50914; margin-bottom: 30px; font-size: 28px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 20px; }
+        
+        .movie-card { transition: 0.4s; cursor: pointer; text-align: center; background: #141414; border-radius: 10px; padding: 10px; border: 1px solid #222; }
+        .movie-card img { width: 100%; border-radius: 8px; box-shadow: 0 5px 15px rgba(0,0,0,0.8); }
+        .movie-card p { font-size: 13px; margin-top: 10px; height: 32px; overflow: hidden; color: #ccc; }
+        .movie-card:hover { transform: scale(1.08); border-color: #e50914; background: #1f1f1f; }
+        
+        /* مشغل الفيديو */
+        #player-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: none; z-index: 1000; }
+        .close-btn { position: absolute; top: 25px; left: 25px; z-index: 1001; background: #e50914; color: white; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; box-shadow: 0 0 10px rgba(229, 9, 20, 0.5); }
+        .close-btn:hover { background: #ff0000; }
+        
+        .vjs-control-bar { background: rgba(0,0,0,0.7) !important; }
+    </style>
+</head>
+<body>
+    <h2>🎬 iPad Cinema Pro</h2>
+    <div class="grid" id="movieGrid"></div>
+
+    <!-- حاوية المشغل -->
+    <div id="player-container">
+        <button class="close-btn" onclick="closePlayer()">إغلاق المشغل ×</button>
+        <video id="vid" class="video-js vjs-fluid vjs-default-skin vjs-big-play-centered" controls preload="auto"></video>
+    </div>
+
+    <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+    <script>
+        const player = videojs('vid');
+
+        // 1. جلب قائمة الأفلام من السيرفر الخاص بك
+        async function loadMovies() {
+            try {
+                const res = await fetch('/api/movies/movie');
+                const movies = await res.json();
+                const grid = document.getElementById('movieGrid');
+                grid.innerHTML = ''; // تنظيف الشبكة قبل الإضافة
+                
+                movies.forEach(movie => {
+                    const div = document.createElement('div');
+                    div.className = 'movie-card';
+                    div.innerHTML = `
+                        <img src="${movie.poster}" alt="${movie.name}">
+                        <p>${movie.name}</p>
+                    `;
+                    div.onclick = () => playMovie(movie.imdb_id, 'movie');
+                    grid.appendChild(div);
+                });
+            } catch (error) {
+                console.error("خطأ في تحميل المكتبة:", error);
+            }
+        }
+
+        // 2. تشغيل الفيلم باستخدام السيرفر السحابي الخاص بك
+        async function playMovie(id, type) {
+            // ملاحظة هامة: هنا نطلب الرابط من سيرفرك لضمان عمل السحابة والحفظ
+            try {
+                const res = await fetch(`/stream/${type}/${id}.json`);
+                const data = await res.json();
+
+                if (data.streams && data.streams.length > 0) {
+                    // الرابط الأول الذي يوفره سيرفرك (المبني على التورنت)
+                    const videoUrl = data.streams[0].url;
+                    
+                    document.getElementById('player-container').style.display = 'block';
+                    player.src({ type: 'video/mp4', src: videoUrl });
+                    player.play();
+                } else {
+                    alert("⚠️ لم يتم العثور على مصادر لهذا الفيلم حالياً.");
+                }
+            } catch (error) {
+                alert("❌ حدث خطأ أثناء محاولة الاتصال بالسيرفر.");
+            }
+        }
+
+        // 3. إغلاق المشغل
+        function closePlayer() {
+            player.pause();
+            player.src(''); // مسح المصدر لتوفير الموارد
+            document.getElementById('player-container').style.display = 'none';
+        }
+
+        // تشغيل التحميل عند فتح الصفحة
+        loadMovies();
+    </script>
+</body>
+</html>

@@ -3,18 +3,20 @@ const cors = require('cors');
 const torrentStream = require('torrent-stream');
 const axios = require('axios');
 const path = require('path');
+const fs = require('fs');
 const trackers = require('./trackers'); 
 const cloudDB = require('./database'); // استدعاء نظام السحابة للحفظ
 
 const app = express();
 
-// تفعيل CORS لضمان عمل الإضافة على جميع المنصات
+// تفعيل CORS لضمان عمل الإضافة على جميع المنصات (آيباد، متصفح، ستريمو)
 app.use(cors());
 
-// تشغيل واجهة الموقع من مجلد public
+// تشغيل الملفات الثابتة من مجلد public أو المجلد الرئيسي
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 
-// --- [API] جلب الأفلام لصفحة الويب ---
+// --- [API] جلب الأفلام لواجهة الويب ---
 app.get('/api/movies/movie', async (req, res) => {
     try {
         const response = await axios.get(`https://v3-cinemeta.strem.io/catalog/movie/top.json`);
@@ -27,6 +29,23 @@ app.get('/api/movies/movie', async (req, res) => {
     } catch (e) {
         res.json([]);
     }
+});
+
+// --- [الرئيسية] ذكاء البحث عن ملف index.html لحل مشكلة الـ 404 ---
+app.get('/', (req, res) => {
+    const locations = [
+        path.join(__dirname, 'public', 'index.html'),
+        path.join(__dirname, 'index.html'),
+        '/usr/src/app/public/index.html',
+        '/usr/src/app/index.html'
+    ];
+    
+    for (let loc of locations) {
+        if (fs.existsSync(loc)) {
+            return res.sendFile(loc);
+        }
+    }
+    res.status(404).send("Error: index.html not found. تأكد من وجود المجلد public وبداخله الملف.");
 });
 
 // --- 1. ملف التعريف (Manifest) لستريمو ---
@@ -64,36 +83,31 @@ app.get('/stream/:type/:id.json', async (req, res) => {
     const { type, id } = req.params;
     const host = `${req.protocol}://${req.get('host')}`;
     
-    // أولاً: محاولة جلب الروابط من السحابة (توفير وقت وبحث)
-    const cachedStreams = cloudDB.getStreams(id);
-    if (cachedStreams) {
-        console.log(`⚡ تم الجلب من السحابة الحقيقية لـ: ${id}`);
-        return res.json({ streams: cachedStreams });
+    // أولاً: جلب من السحابة
+    const cached = cloudDB.getStreams(id);
+    if (cached) {
+        console.log(`⚡ جلب من السحابة: ${id}`);
+        return res.json({ streams: cached });
     }
 
     try {
-        // ثانياً: إذا لم يوجد، نبحث في المحرك الخارجي
-        const response = await axios.get(`https://torrentio.strem.fun/stream/${type}/${id}.json`, { timeout: 4000 });
+        // ثانياً: البحث الخارجي
+        const response = await axios.get(`https://torrentio.strem.fun/stream/${type}/${id}.json`, { timeout: 5000 });
         
         if (response.data && response.data.streams) {
-            const streams = response.data.streams.slice(0, 5).map((s) => {
-                const magnet = `magnet:?xt=urn:btih:${s.infoHash}`;
-                return {
-                    name: "iPad Cinema Pro 🚀", 
-                    title: `${s.title}\n👤 Seeds: ${s.seeders || 'OK'}`,
-                    url: `${host}/video?magnet=${encodeURIComponent(magnet)}`
-                };
-            });
+            const streams = response.data.streams.slice(0, 5).map((s) => ({
+                name: "iPad Pro 🚀", 
+                title: `${s.title}\n👤 Seeds: ${s.seeders || 'OK'}`,
+                url: `${host}/video?magnet=${encodeURIComponent('magnet:?xt=urn:btih:'+s.infoHash)}`
+            }));
 
-            // ثالثاً: حفظ الروابط في السحابة لتسريع الطلبات القادمة
+            // ثالثاً: حفظ في السحابة
             cloudDB.saveStreams(id, streams);
-            
             return res.json({ streams });
         }
     } catch (e) {
-        console.error("⚠️ فشل جلب الروابط من المصدر الخارجي");
+        console.error("⚠️ فشل جلب الروابط");
     }
-
     res.json({ streams: [] });
 });
 
@@ -136,17 +150,13 @@ app.get('/video', (req, res) => {
     res.on('close', () => engine.destroy());
 });
 
-// فتح واجهة الويب مباشرة عند الدخول للرابط الرئيسي
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
+// إعداد المنفذ لـ Render و Google Cloud
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
     =================================================
-    🚀 iPad Cinema Cloud Pro - تم التشغيل!
-    📡 المنفذ: ${PORT}
+    🚀 iPad Cinema Cloud Pro - تم التشغيل بنجاح!
+    📡 الرابط جاهز للعمل على المنفذ: ${PORT}
     💾 نظام السحابة الحقيقية: مُفعل ✅
     =================================================
     `);

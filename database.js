@@ -1,38 +1,59 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, 'cloud_storage.json');
+// مسار ملف السحابة في المجلد الرئيسي بجانب index.js
+const DB_PATH = path.join(process.cwd(), 'cloud_storage.json');
 
-// التأكد من وجود ملف السحابة أو إنشاؤه
-if (!fs.existsSync(DB_PATH)) {
-    fs.writeFileSync(DB_PATH, JSON.stringify({ movies: {}, streams: {} }, null, 2));
-}
+// دالة مساعدة لقراءة الملف بأمان (تمنع انهيار السيرفر)
+const readDB = () => {
+    try {
+        if (!fs.existsSync(DB_PATH)) {
+            const initialData = { movies: {}, streams: {} };
+            fs.writeFileSync(DB_PATH, JSON.stringify(initialData, null, 2));
+            return initialData;
+        }
+        const data = fs.readFileSync(DB_PATH, 'utf8');
+        return JSON.parse(data || '{"movies": {}, "streams": {}}');
+    } catch (err) {
+        console.error("⚠️ خطأ في قراءة السحابة، تم إعادة ضبطها.");
+        return { movies: {}, streams: {} };
+    }
+};
+
+// دالة مساعدة للكتابة بأمان
+const writeDB = (data) => {
+    try {
+        fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+    } catch (err) {
+        console.error("⚠️ فشل في حفظ البيانات في السحابة.");
+    }
+};
 
 const cloudDB = {
     // حفظ بيانات الفيلم
     saveMovie: (id, data) => {
-        const db = JSON.parse(fs.readFileSync(DB_PATH));
+        const db = readDB();
         db.movies[id] = { ...data, timestamp: Date.now() };
-        fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+        writeDB(db);
     },
 
-    // جلب بيانات الفيلم من السحابة
+    // جلب بيانات الفيلم
     getMovie: (id) => {
-        const db = JSON.parse(fs.readFileSync(DB_PATH));
+        const db = readDB();
         return db.movies[id] || null;
     },
 
-    // حفظ الروابط (Streams) لعدم تكرار البحث
+    // حفظ الروابط لعدم تكرار البحث (تسريع البث)
     saveStreams: (id, streams) => {
-        const db = JSON.parse(fs.readFileSync(DB_PATH));
+        const db = readDB();
         db.streams[id] = { streams, timestamp: Date.now() };
-        fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+        writeDB(db);
     },
 
+    // جلب الروابط مع فحص الصلاحية (24 ساعة)
     getStreams: (id) => {
-        const db = JSON.parse(fs.readFileSync(DB_PATH));
+        const db = readDB();
         const data = db.streams[id];
-        // صلاحية الرابط في السحابة 24 ساعة ثم يطلب تجديده
         if (data && Date.now() - data.timestamp < 24 * 60 * 60 * 1000) {
             return data.streams;
         }

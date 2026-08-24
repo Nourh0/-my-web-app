@@ -1,7 +1,7 @@
 {
-  "name": "my-web-app",
-  "version": "1.0.0",
-  "description": "iPad Cinema Streamer",
+  "name": "ipad-cinema-pro-v11",
+  "version": "11.0.0",
+  "description": "iPad Cinema Streamer & Stremio Addon Hybrid",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -10,7 +10,9 @@
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "torrent-stream": "^1.2.0",
-    "axios": "^1.4.0",
-    "path": "^0.12.7"
+    "axios": "^1.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -3,45 +3,37 @@ const cors = require('cors');
 const torrentStream = require('torrent-stream');
 const axios = require('axios');
 const path = require('path');
-const trackers = require('./trackers'); // تأكد من وجود الملف بجانبه
+const trackers = require('./trackers'); // تأكد من وجود ملف trackers.js بجانبه
 
 const app = express();
 
-// تفعيل CORS للسماح لستريمو بالاتصال بالسيرفر
+// تفعيل CORS لضمان قبول الإضافة في تطبيق ستريمو والآيباد
 app.use(cors());
 
-// تشغيل واجهة الموقع من مجلد public (للمتصفح)
+// تشغيل واجهة الموقع من مجلد public (للمتصفح والآيباد)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// --- 1. ملف التعريف المطور (Manifest) للشعار والكتالوج في ستريمو ---
+// --- 1. ملف التعريف النهائي (Manifest V8.1) ---
 app.get('/manifest.json', (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.json({
-        id: "org.ipad.cinema.pro.v7",
-        version: "7.1.0",
+        id: "org.ipad.cinema.pro.v8",
+        version: "8.1.0",
         name: "iPad Cinema Pro 🎬",
-        description: "مكتبة أفلام وبث تورنت حقيقي فائق السرعة للآيباد",
+        description: "مكتبة أفلام وبث تورنت حقيقي فائق السرعة - نسخة مصلحة كلياً",
         logo: "https://cdn-icons-png.flaticon.com/512/2503/2503508.png", 
         background: "https://wallpaperaccess.com/full/1512225.jpg",
         resources: ["stream", "catalog"],
         types: ["movie", "series"],
         idPrefixes: ["tt"],
         catalogs: [
-            {
-                type: "movie",
-                id: "top_movies",
-                name: "أفلام iPad Cinema"
-            },
-            {
-                type: "series",
-                id: "top_series",
-                name: "أنمي ومسلسلات iPad"
-            }
+            { type: "movie", id: "top_movies", name: "أفلام iPad Cinema" },
+            { type: "series", id: "top_series", name: "أنمي ومسلسلات iPad" }
         ]
     });
 });
 
-// --- 2. معالج الكتالوج (لظهور الأفلام داخل تطبيق ستريمو) ---
+// --- 2. معالج الكتالوج (Catalog) ---
 app.get('/catalog/:type/:id.json', async (req, res) => {
     const { type } = req.params;
     try {
@@ -52,43 +44,55 @@ app.get('/catalog/:type/:id.json', async (req, res) => {
     }
 });
 
-// --- 3. معالج API الموقع (لظهور البوسترات في صفحة الويب الخاصة بك) ---
-app.get('/api/movies/:type', async (req, res) => {
-    const type = req.params.type || 'movie';
-    try {
-        const response = await axios.get(`https://v3-cinemeta.strem.io/catalog/${type}/top.json`);
-        res.json(response.data.metas);
-    } catch (e) {
-        res.status(500).send("Error fetching catalog");
-    }
-});
-
-// --- 4. معالج البحث عن الروابط الحقيقية (Torrentio API) ---
+// --- 3. معالج البحث الذكي عن الروابط (Stream Handler V8) ---
+// تم دمج تحسينات التقرير لحل مشكلة المصفوفة الفارغة []
 app.get('/stream/:type/:id.json', async (req, res) => {
     const { type, id } = req.params;
     const host = `${req.protocol}://${req.get('host')}`;
+    
+    console.log(`🔎 جاري البحث عن روابط للمعرف: ${id}`);
+
     try {
-        const response = await axios.get(`https://torrentio.strem.fun/stream/${type}/${id}.json`);
-        if (response.data.streams) {
-            const streams = response.data.streams.filter(s => s.infoHash).map((s, i) => ({
-                title: `🚀 سيرفر آيباد #${i + 1}\n${s.title}`,
-                url: `${host}/video?magnet=${encodeURIComponent('magnet:?xt=urn:btih:' + s.infoHash)}`
-            }));
+        // طلب الروابط من Torrentio مع مهلة زمنية 4 ثوانٍ
+        const response = await axios.get(`https://torrentio.strem.fun/stream/${type}/${id}.json`, { timeout: 4000 });
+        
+        if (response.data && response.data.streams && response.data.streams.length > 0) {
+            const streams = response.data.streams.slice(0, 5).map((s) => {
+                const magnet = `magnet:?xt=urn:btih:${s.infoHash}`;
+                return {
+                    name: "iPad Cinema Pro 🚀", 
+                    title: `${s.title}\n👤 Seeds: ${s.seeders || 'OK'}`,
+                    url: `${host}/video?magnet=${encodeURIComponent(magnet)}`,
+                    behaviorHints: {
+                        notWebReady: false,
+                        bingeGroup: `ipad-pro-${id}`
+                    }
+                };
+            });
             return res.json({ streams });
         }
-    } catch (e) { console.log("Stream Error"); }
-    res.json({ streams: [] });
+    } catch (e) {
+        console.error("⚠️ خطأ في السكرابر أو انتهت المهلة");
+    }
+
+    // إذا لم يجد روابط، يرسل رسالة تنبيه بدلاً من مصفوفة فارغة ليعرف المستخدم أن السيرفر يعمل
+    res.json({ 
+        streams: [{
+            name: "⚠️ تنبيه",
+            title: "جاري البحث عن مصادر.. يرجى العودة للخلف والمحاولة مرة أخرى",
+            url: `${host}/video?magnet=0` 
+        }] 
+    });
 });
 
-// --- 5. محرك الفيديو (Video Engine V7.1 Optimized) ---
+// --- 4. محرك الفيديو المتطور (Video Engine V8) ---
 app.get('/video', (req, res) => {
     const magnetUri = req.query.magnet;
-    if (!magnetUri) return res.status(400).send("No magnet provided");
+    if (!magnetUri || magnetUri === '0') return res.status(400).send("No valid magnet");
 
-    // إعدادات المحرك لضمان استقرار السيرفر تحت ضغط الطلبات
     const engine = torrentStream(magnetUri, {
         trackers: trackers,
-        connections: 20, // تقليل عدد الاتصالات لمنع الازدحام وانهيار الذاكرة
+        connections: 20, // عدد متوازن لمنع انهيار الخادم في Render
         tmp: '/tmp'
     });
 
@@ -96,16 +100,13 @@ app.get('/video', (req, res) => {
         const file = engine.files.find(f => f.name.endsWith('.mp4') || f.name.endsWith('.mkv') || f.name.endsWith('.avi'));
         if (!file) {
             engine.destroy();
-            return res.status(404).send("Not Found");
+            return res.status(404).send("Video file not found");
         }
         
-        file.select(); // تحميل أجزاء الفيديو الأولى فوراً
+        file.select(); 
         const range = req.headers.range;
         if (!range) {
-            res.writeHead(200, { 
-                'Content-Length': file.length, 
-                'Content-Type': 'video/mp4' 
-            });
+            res.writeHead(200, { 'Content-Length': file.length, 'Content-Type': 'video/mp4' });
             file.createReadStream().pipe(res);
         } else {
             const parts = range.replace(/bytes=/, "").split("-");
@@ -114,16 +115,15 @@ app.get('/video', (req, res) => {
             res.writeHead(206, {
                 'Content-Range': `bytes ${start}-${end}/${file.length}`,
                 'Accept-Ranges': 'bytes',
-                'Content-Length': (end - start) + 1,
+                'Content-Length': (end - start) + 1, 
                 'Content-Type': 'video/mp4'
             });
             file.createReadStream({ start, end }).pipe(res);
         }
     });
 
-    // إغلاق المحرك فوراً عند إيقاف الفيلم لتفريغ المنفذ والذاكرة
     res.on('close', () => {
-        console.log("إغلاق الاتصال.. تنظيف موارد المحرك");
+        console.log("Cleanup: Destroying torrent engine");
         engine.destroy();
     });
 });
@@ -131,24 +131,23 @@ app.get('/video', (req, res) => {
 app.get('/', (req, res) => {
     res.send(`
         <div style="text-align:center; padding:50px; font-family:sans-serif;">
-            <h1 style="color:#2c3e50;">iPad Cinema V7 Pro Hybrid ✅</h1>
-            <p>السيرفر يعمل بنجاح على المنفذ المخصص.</p>
+            <h1 style="color:#2c3e50;">iPad Cinema Pro V8.1 Hybrid ✅</h1>
+            <p>السيرفر يعمل بكامل طاقته على المنفذ المخصص.</p>
             <code style="background:#eee; padding:10px;">/manifest.json</code>
         </div>
     `);
 });
 
-// --- إعداد المنفذ وتشغيل الخادم لـ Render ---
-// يأخذ المنفذ 10000 من الإعدادات تلقائياً
+// --- إعداد المنفذ لـ Render ---
 const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`
     =================================================
-    🚀 iPad Cinema V7 Pro - تم التشغيل!
-    📡 المنفذ النشط: ${PORT}
-    🛠️ نظام إدارة الازدحام: مفعل (Max Connections: 20)
-    ✅ جاهز لاستقبال الطلبات من ستريمو والآيباد
+    🚀 iPad Cinema V8.1 Pro - تم التشغيل بنجاح!
+    📡 المنفذ: ${PORT}
+    🛠️ تم دمج تحسينات V7 و V8
+    ✅ جاهز للبث الحقيقي
     =================================================
     `);
 });

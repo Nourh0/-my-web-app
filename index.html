@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iPad Cinema Pro | المكتبة السحابية</title>
+    <!-- استدعاء سريع للمكتبات -->
+    <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
+    <style>
+        body { background: #050505; color: white; font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; padding: 20px; overflow-x: hidden; }
+        h2 { text-align: center; color: #e50914; margin-bottom: 30px; font-size: 28px; }
+        
+        /* شبكة عرض سريعة الاستجابة */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 15px; }
+        
+        .movie-card { transition: 0.3s; cursor: pointer; text-align: center; background: #111; border-radius: 10px; padding: 5px; border: 1px solid #222; }
+        .movie-card img { width: 100%; border-radius: 8px; filter: brightness(0.8); }
+        .movie-card p { font-size: 12px; margin-top: 8px; height: 30px; overflow: hidden; }
+        .movie-card:hover { transform: scale(1.05); border-color: #e50914; }
+        .movie-card:hover img { filter: brightness(1); }
+        
+        /* حاوية المشغل الذكية */
+        #player-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; display: none; z-index: 1000; }
+        .close-btn { position: absolute; top: 20px; left: 20px; z-index: 1001; background: #e50914; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        
+        /* أنيميشن التحميل */
+        .loading { text-align: center; padding: 50px; font-size: 20px; color: #e50914; }
+    </style>
+</head>
+<body>
+    <h2>🎬 iPad Cinema Pro</h2>
+    <div id="loading" class="loading">جاري جلب الأفلام من السحابة...</div>
+    <div class="grid" id="movieGrid"></div>
+
+    <div id="player-container">
+        <button class="close-btn" onclick="closePlayer()">إغلاق X</button>
+        <video id="vid" class="video-js vjs-fluid vjs-default-skin" controls preload="auto"></video>
+    </div>
+
+    <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+    <script>
+        const player = videojs('vid');
+        // تحديد رابط السيرفر تلقائياً لسرعة البحث
+        const API_BASE = window.location.origin;
+
+        // 1. جلب الأفلام فوراً عند تشغيل الملف
+        async function loadMovies() {
+            try {
+                const res = await fetch(`${API_BASE}/api/movies/movie`);
+                const movies = await res.json();
+                document.getElementById('loading').style.display = 'none';
+                const grid = document.getElementById('movieGrid');
+                
+                grid.innerHTML = movies.map(movie => `
+                    <div class="movie-card" onclick="playMovie('${movie.imdb_id}', 'movie')">
+                        <img src="${movie.poster}" loading="lazy">
+                        <p>${movie.name}</p>
+                    </div>
+                `).join('');
+            } catch (error) {
+                document.getElementById('loading').innerHTML = "❌ فشل الاتصال بالسيرفر. تأكد أن السيرفر شغال.";
+            }
+        }
+
+        // 2. البحث عن الروابط وتشغيلها (الفكرة 2: البروكسي)
+        async function playMovie(id, type) {
+            try {
+                // البحث في مسار الستريم الخاص بسيرفرك
+                const res = await fetch(`${API_BASE}/stream/${type}/${id}.json`);
+                const data = await res.json();
+
+                if (data.streams && data.streams.length > 0) {
+                    const videoUrl = data.streams[0].url;
+                    document.getElementById('player-container').style.display = 'block';
+                    player.src({ type: 'video/mp4', src: videoUrl });
+                    player.play();
+                } else {
+                    alert("لا توجد مصادر حالياً.");
+                }
+            } catch (e) {
+                alert("خطأ في تشغيل الفيديو.");
+            }
+        }
+
+        function closePlayer() {
+            player.pause();
+            player.src('');
+            document.getElementById('player-container').style.display = 'none';
+        }
+
+        loadMovies();
+    </script>
+</body>
+</html>
